@@ -1,0 +1,372 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:localbasket/actors/customer/order_page.dart';
+import 'package:localbasket/actors/customer/addto_cart.dart';
+import 'package:localbasket/actors/customer/product_screen.dart';
+import 'package:localbasket/actors/common/profile.dart';
+import 'package:localbasket/models/port.dart';
+import 'package:localbasket/providers/cart_provider.dart';
+import 'package:localbasket/providers/user_provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({Key? key}) : super(key: key);
+
+  @override
+  _DashboardScreenState createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  List<Map<String, dynamic>> _vendors = [];
+  int _selectedIndex = 0;
+  late int userId;
+  String? _selectedArea;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final userProvider = Provider.of<UserProvider>(context);
+    userId = userProvider.userId; // Assign to class-level variable
+    _fetchVendors();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    //final cartProvider = Provider.of<CartProvider>(context);
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor:Color.fromRGBO(2, 43, 96, 1),
+        title: Consumer<UserProvider>(
+          builder: (context, userProvider, child) {
+            return Text(
+              'Welcome ${userProvider.userId}',
+              style: TextStyle(color: Colors.white),
+            );
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: () => _logout(context),
+          ),
+        ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: <Widget>[
+            Container(
+              height: 100, // Adjust the height of the DrawerHeader
+              decoration: BoxDecoration(
+                color: Color.fromRGBO(2, 43, 96, 1),
+              ),
+              child: Center(
+                child: Text(
+                  'Menu',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                  ),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.home),
+              title: Text('Home'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToDashboard();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.shopping_cart),
+              title: Text('Cart'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToCart();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.person),
+              title: Text('Profile'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToProfile();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.shopping_bag),
+              title: Text('View Order'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToViewOrder();
+              },
+            ),
+          ],
+        ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              'Vendors',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _vendors.length,
+              itemBuilder: (context, index) {
+                final vendor = _vendors[index];
+                return VendorContainer(
+                    vendor: vendor,
+                    onTap: () {
+                      final selectedId = vendor['user_id'] as int?;
+                      final selectedAddress =
+                          vendor['address']?.toLowerCase() ?? '';
+                      if (selectedId != null) {
+                        _selectedArea = selectedAddress.contains('kathmandu')
+                            ? 'Kathmandu'
+                            : selectedAddress.contains('lalitpur')
+                                ? 'Lalitpur'
+                                : selectedAddress.contains('bhaktapur')
+                                    ? 'Bhaktapur'
+                                    : null;
+
+                        if (_checkCartItemsForSelectedVendor(selectedId)) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ProductsScreen(
+                                  vendorId: selectedId,
+                                  userId: userId,
+                                  selectedArea: _selectedArea),
+                            ),
+                          );
+                        } else {
+                          print('Cannot add products from different vendors');
+                        }
+                      }
+                    });
+              },
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: Color.fromRGBO(2, 43, 96, 1),
+        selectedItemColor: Colors.white,
+        unselectedItemColor: Colors.grey,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Cart',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _checkCartItemsForSelectedVendor(int selectedVendorId) {
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    final cartItems = cartProvider.cartItems;
+
+    List<int> selectedVendors = [];
+
+    for (var item in cartItems) {
+      if (item['vendor_id'] != selectedVendorId) {
+        selectedVendors.add(item['vendor_id']);
+      }
+    }
+
+    if (selectedVendors.isNotEmpty) {
+      String vendorIds = selectedVendors.join(', ');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'You can only select products from vendor ID(s): $vendorIds.'),
+        ),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    //final cartProvider = Provider.of<CartProvider>(context, listen: false);
+
+    // Navigate to the appropriate page based on the tapped index
+    switch (index) {
+      case 0:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DashboardScreen(),
+            settings: RouteSettings(arguments: {'userId': userId}),
+          ),
+        );
+        break;
+      case 1:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CartPage(userId: userId),
+          ),
+        );
+        break;
+      case 2:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (context) => ProfileScreen(
+                    userId: userId,
+                  )),
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<void> _fetchVendors() async {
+    final url = Uri.parse('http://$ipAddress:$port/vendors');
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final vendors =
+            List<Map<String, dynamic>>.from(responseData['vendors']);
+
+        // Separate vendors into different sections based on address
+        List<Map<String, dynamic>> kathmanduVendors = [];
+        List<Map<String, dynamic>> lalitpurVendors = [];
+        List<Map<String, dynamic>> bhaktapurVendors = [];
+
+        for (var vendor in vendors) {
+          final address = vendor['address']?.toLowerCase() ?? '';
+
+          if (address.contains('kathmandu')) {
+            kathmanduVendors.add(vendor);
+          } else if (address.contains('lalitpur')) {
+            lalitpurVendors.add(vendor);
+          } else if (address.contains('bhaktapur')) {
+            bhaktapurVendors.add(vendor);
+          }
+        }
+
+        // Update state with categorized vendors
+        setState(() {
+          _vendors = [
+            if (kathmanduVendors.isNotEmpty) {'section': 'Kathmandu'},
+            ...kathmanduVendors,
+            if (lalitpurVendors.isNotEmpty) {'section': 'Lalitpur'},
+            ...lalitpurVendors,
+            if (bhaktapurVendors.isNotEmpty) {'section': 'Bhaktapur'},
+            ...bhaktapurVendors,
+          ];
+        });
+      } else {
+        throw Exception('Failed to load vendors: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching vendors: $e');
+    }
+  }
+
+  void _logout(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    userProvider.user = null; // Clear the user
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+  }
+
+  void _navigateToDashboard() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DashboardScreen(),
+        settings: RouteSettings(arguments: {'userId': userId}),
+      ),
+    );
+  }
+
+  void _navigateToCart() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CartPage(userId: userId),
+      ),
+    );
+  }
+
+  void _navigateToProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProfileScreen(userId: userId),
+      ),
+    );
+  }
+
+  void _navigateToViewOrder() {
+    // Navigate to the new view order page
+    // Replace the 'ViewOrderPage' with your actual view order page
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ViewOrderPage(userId: userId),
+      ),
+    );
+  }
+}
+
+class VendorContainer extends StatelessWidget {
+  final Map<String, dynamic> vendor;
+  final VoidCallback onTap;
+
+  const VendorContainer({Key? key, required this.vendor, required this.onTap})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Card(
+        margin: const EdgeInsets.all(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                vendor['name'] ?? '',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(vendor['address'] ?? ''),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

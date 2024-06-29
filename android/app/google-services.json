@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "684135445993",
+    "project_id": "localbasket-cf506",
+    "storage_bucket": "localbasket-cf506.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:684135445993:android:301f65b47eaa630f58c778",
+        "android_client_info": {
+          "package_name": "com.example.localbasket"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSae0lRhOizefqAbt9TpkGbjxqbiFO2No"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
